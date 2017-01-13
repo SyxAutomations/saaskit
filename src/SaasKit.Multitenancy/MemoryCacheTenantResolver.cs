@@ -50,12 +50,13 @@ namespace SaasKit.Multitenancy
         protected abstract IEnumerable<string> GetTenantIdentifiers(TenantContext<TTenant> context);
         protected abstract Task<TenantContext<TTenant>> ResolveAsync(HttpContext context);
 
-        async Task<TenantContext<TTenant>> ITenantResolver<TTenant>.ResolveAsync(HttpContext context)
+        async Task<TenantContext<TTenant>> ITenantResolver<TTenant>.ResolveAsync(object context)
         {
+            var httpContext = context as HttpContext;
             Ensure.Argument.NotNull(context, nameof(context));
 
             // Obtain the key used to identify cached tenants from the current request
-            var cacheKey = GetContextIdentifier(context);
+            var cacheKey = GetContextIdentifier(httpContext);
 
             if (cacheKey == null)
             {
@@ -67,7 +68,7 @@ namespace SaasKit.Multitenancy
             if (tenantContext == null)
             {
                 log.LogDebug("TenantContext not present in cache with key \"{cacheKey}\". Attempting to resolve.", cacheKey);
-                tenantContext = await ResolveAsync(context);
+                tenantContext = await ResolveAsync(httpContext);
 
                 if (tenantContext != null)
                 {

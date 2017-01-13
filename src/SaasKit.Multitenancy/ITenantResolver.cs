@@ -5,6 +5,6 @@ namespace SaasKit.Multitenancy
 {
     public interface ITenantResolver<TTenant>
     {
-        Task<TenantContext<TTenant>> ResolveAsync(HttpContext context);
+        Task<TenantContext<TTenant>> ResolveAsync(object context);
     }
 }

@@ -1,0 +1,22 @@
+{
+    "version": "1.0.0-*",
+    "dependencies": {
+        "SaasKit.Multitenancy": {
+            "target": "project"
+        },
+        "Corebus" : "1.0.2"
+    },
+    "frameworks": {
+        "netcoreapp1.1": {
+            "dependencies": {
+                "Microsoft.NETCore.App": {
+                    "type": "platform",
+                    "version": "1.1.0"
+                }
+            }
+        }
+    },
+    "tooling": {
+        "defaultNamespace": "SaasKit.Multitenancy.Rebus"
+    }
+}

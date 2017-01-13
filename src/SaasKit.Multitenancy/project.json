@@ -16,26 +16,24 @@
 		}
 	},
 	"dependencies": {
-		"NETStandard.Library": "1.6.0",
+		"NETStandard.Library": "1.6.1",
 		"Microsoft.AspNetCore.Http": "1.0.0",
 		"Microsoft.AspNetCore.Http.Abstractions": "1.0.0",
 		"Microsoft.AspNetCore.Http.Extensions": "1.0.0",
 		"Microsoft.Extensions.DependencyInjection.Abstractions": "1.0.0",
 		"Microsoft.Extensions.Caching.Abstractions": "1.0.0",
 		"Microsoft.Extensions.Caching.Memory": "1.0.0",
-		"Microsoft.Extensions.Logging.Abstractions": "1.0.0"
+		"Microsoft.Extensions.Logging.Abstractions": "1.0.0",
+		"Corebus" : "1.0.2"
 	},
 	"frameworks": {
-		"net46": {},
-		"net452": {},
-		"net451": {},
 		"netstandard1.6": {
 			"dependencies": {
 				"Microsoft.CSharp": "4.0.1",
-				"System.Collections": "4.0.11",
-				"System.Linq": "4.1.0",
-				"System.Runtime": "4.1.0",
-				"System.Threading": "4.0.11"
+				"System.Linq": "4.3.0",
+				"System.Collections": "4.3.0",				
+				"System.Runtime": "4.3.0",
+				"System.Threading": "4.3.0"
 			},
 			"imports": [
 				"dotnet5.4",
