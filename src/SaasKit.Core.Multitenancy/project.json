@@ -24,7 +24,7 @@
 		"Microsoft.Extensions.Caching.Abstractions": "1.0.0",
 		"Microsoft.Extensions.Caching.Memory": "1.0.0",
 		"Microsoft.Extensions.Logging.Abstractions": "1.0.0",
-		"Corebus" : "1.0.2"
+		"Rebus" : "4.0.0-*"
 	},
 	"frameworks": {
 		"netstandard1.6": {
