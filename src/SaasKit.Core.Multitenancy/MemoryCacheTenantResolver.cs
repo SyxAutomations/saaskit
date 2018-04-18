@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
+using Rebus.Pipeline;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -47,52 +48,88 @@ namespace SaasKit.Multitenancy
         }
 
         protected abstract string GetContextIdentifier(HttpContext context);
+        protected abstract string GetContextIdentifier(IncomingStepContext context);
         protected abstract IEnumerable<string> GetTenantIdentifiers(TenantContext<TTenant> context);
         protected abstract Task<TenantContext<TTenant>> ResolveAsync(HttpContext context);
+        protected abstract Task<TenantContext<TTenant>> ResolveAsync(IncomingStepContext context);
+        protected abstract void HandleTenantContext(TenantContext<TTenant> context);
 
         async Task<TenantContext<TTenant>> ITenantResolver<TTenant>.ResolveAsync(object context)
         {
             var httpContext = context as HttpContext;
-            Ensure.Argument.NotNull(context, nameof(context));
-
-            // Obtain the key used to identify cached tenants from the current request
-            var cacheKey = GetContextIdentifier(httpContext);
-
-            if (cacheKey == null)
+            if (httpContext != null)
             {
-                return null;
+                var tenantContext = RetrieveTenantContextFromCache(httpContext);
+                var fromCache = tenantContext != null;
+
+                if (!fromCache) tenantContext = await ResolveAsync(httpContext);
+
+                HandleTenantContext(tenantContext);
+                if (!fromCache) CacheTenantContext(tenantContext);
+
+                return tenantContext;
             }
+
+            var messageContext = context as IncomingStepContext;
+            if (messageContext != null)
+            {
+                var tenantContext = RetrieveTenantContextFromCache(messageContext);
+                var fromCache = tenantContext != null;
+
+                if (!fromCache) tenantContext = await ResolveAsync(messageContext);
+
+                HandleTenantContext(tenantContext);
+                if (!fromCache) CacheTenantContext(tenantContext);
+
+                return tenantContext;
+            }
+
+            throw new NotImplementedException("this context is not supported");
+        }
+
+        private TenantContext<TTenant> RetrieveTenantContextFromCache(object context)
+        {
+            // Obtain the key used to identify cached tenants from the current request
+            var cacheKey = GetContextIdentifier(context);
+            if (cacheKey == null) return null;
 
             var tenantContext = cache.Get(cacheKey) as TenantContext<TTenant>;
-
-            if (tenantContext == null)
-            {
-                log.LogDebug("TenantContext not present in cache with key \"{cacheKey}\". Attempting to resolve.", cacheKey);
-                tenantContext = await ResolveAsync(httpContext);
-
-                if (tenantContext != null)
-                {
-                    var tenantIdentifiers = GetTenantIdentifiers(tenantContext);
-
-                    if (tenantIdentifiers != null)
-                    {
-                        var cacheEntryOptions = GetCacheEntryOptions();
-
-                        log.LogDebug("TenantContext:{id} resolved. Caching with keys \"{tenantIdentifiers}\".", tenantContext.Id, tenantIdentifiers);
-
-                        foreach (var identifier in tenantIdentifiers)
-                        {
-                            cache.Set(identifier, tenantContext, cacheEntryOptions);
-                        }
-                    }
-                }
-            }
-            else
+            if (tenantContext != null)
             {
                 log.LogDebug("TenantContext:{id} retrieved from cache with key \"{cacheKey}\".", tenantContext.Id, cacheKey);
+                return tenantContext;
             }
 
-            return tenantContext;
+            log.LogDebug("TenantContext not present in cache with key \"{cacheKey}\". Attempting to resolve.", cacheKey);
+            return null;
+        }
+
+        private string GetContextIdentifier(object context)
+        {
+            var httpContext = context as HttpContext;
+            if (httpContext != null) return GetContextIdentifier(httpContext);
+
+            var messageContext = context as IncomingStepContext;
+            if (messageContext != null) return GetContextIdentifier(messageContext);
+
+            throw new NotImplementedException("this context is not supported");
+        }
+
+        private void CacheTenantContext(TenantContext<TTenant> tenantContext)
+        {
+            if (tenantContext == null) return;
+
+            var tenantIdentifiers = GetTenantIdentifiers(tenantContext);
+            if (tenantIdentifiers == null) return;
+
+            var cacheEntryOptions = GetCacheEntryOptions();
+
+            log.LogDebug("TenantContext:{id} resolved. Caching with keys \"{tenantIdentifiers}\".", tenantContext.Id, tenantIdentifiers);
+
+            foreach (var identifier in tenantIdentifiers)
+            {
+                cache.Set(identifier, tenantContext, cacheEntryOptions);
+            }
         }
 
         private MemoryCacheEntryOptions GetCacheEntryOptions()

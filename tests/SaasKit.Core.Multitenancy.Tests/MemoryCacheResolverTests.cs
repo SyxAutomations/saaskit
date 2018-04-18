@@ -2,9 +2,13 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging;
+using Rebus.Messages;
+using Rebus.Pipeline;
+using Rebus.Transport;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -13,19 +17,29 @@ namespace SaasKit.Multitenancy.Tests
 {
     public class MemoryCacheTenantResolverTests
     {
-        private HttpContext CreateContext(string requestPath)
+        private HttpContext CreateHttpContext(string requestPath)
         {
             var context = new DefaultHttpContext();
             context.Request.Path = requestPath;
-
             return context;
         }
 
+        private IncomingStepContext CreateIncomingStepContext(string path)
+        {
+            using (new RebusTransactionScope())
+            {
+                var headers = new Dictionary<string, string> { { "path", path } };
+                var msg = new TransportMessage(headers, Encoding.UTF8.GetBytes(path));
+                var context = new IncomingStepContext(msg, AmbientTransactionContext.Current);
+                return context;
+            }
+        }
+
         [Fact]
-        public async Task Can_resolve_tenant_context()
+        public async Task Can_resolve_tenant_httpcontext()
         {
             var harness = new TestHarness();
-            var context = CreateContext("/apple");
+            var context = CreateHttpContext("/apple");
 
             var tenantContext = await harness.Resolver.ResolveAsync(context);
 
@@ -33,19 +47,41 @@ namespace SaasKit.Multitenancy.Tests
             Assert.Equal("fruit", tenantContext.Tenant.Id);
         }
 
-
         [Fact]
-        public async Task Can_retrieve_tenant_context_from_cache()
+        public async Task Can_resolve_tenant_incomingstepcontext()
         {
             var harness = new TestHarness();
-            var context = CreateContext("/apple");
+            var context = CreateIncomingStepContext("/apple");
+
+            var tenantContext = await harness.Resolver.ResolveAsync(context);
+
+            Assert.NotNull(tenantContext);
+            Assert.Equal("fruit", tenantContext.Tenant.Id);
+        }
+
+        [Fact]
+        public async Task Can_retrieve_tenant_httpcontext_from_cache()
+        {
+            var harness = new TestHarness();
+            var context = CreateHttpContext("/apple");
 
             var tenantContext = await harness.Resolver.ResolveAsync(context);
 
             TenantContext<TestTenant> cachedTenant;
-
             Assert.True(harness.Cache.TryGetValue("/apple", out cachedTenant));
+            Assert.Equal(tenantContext.Tenant.Id, cachedTenant.Tenant.Id);
+        }
 
+        [Fact]
+        public async Task Can_retrieve_tenant_incomingstepcontext_from_cache()
+        {
+            var harness = new TestHarness();
+            var context = CreateIncomingStepContext("/apple");
+
+            var tenantContext = await harness.Resolver.ResolveAsync(context);
+
+            TenantContext<TestTenant> cachedTenant;
+            Assert.True(harness.Cache.TryGetValue("/apple", out cachedTenant));
             Assert.Equal(tenantContext.Tenant.Id, cachedTenant.Tenant.Id);
         }
 
@@ -53,14 +89,12 @@ namespace SaasKit.Multitenancy.Tests
         public async Task Can_retrieve_tenant_context_from_cache_using_linked_identifier()
         {
             var harness = new TestHarness();
-            var context = CreateContext("/apple");
+            var context = CreateHttpContext("/apple");
 
             var tenantContext = await harness.Resolver.ResolveAsync(context);
 
             TenantContext<TestTenant> cachedTenant;
-
             Assert.True(harness.Cache.TryGetValue("/pear", out cachedTenant));
-
             Assert.Equal(tenantContext.Tenant.Id, cachedTenant.Tenant.Id);
         }
 
@@ -68,7 +102,7 @@ namespace SaasKit.Multitenancy.Tests
         public async Task Should_dispose_tenant_on_eviction_from_cache_by_default()
         {
             var harness = new TestHarness(cacheExpirationInSeconds: 1);
-            var context = CreateContext("/apple");
+            var context = CreateHttpContext("/apple");
 
             var tenantContext = await harness.Resolver.ResolveAsync(context);
 
@@ -94,7 +128,7 @@ namespace SaasKit.Multitenancy.Tests
             var harness = new TestHarness(cacheExpirationInSeconds: 10);
 
             // first request for apple
-            var tenantContext = await harness.Resolver.ResolveAsync(CreateContext("/apple"));
+            var tenantContext = await harness.Resolver.ResolveAsync(CreateHttpContext("/apple"));
 
             // cache should have all 3 entries
             Assert.NotNull(harness.Cache.Get("/apple"));
@@ -125,16 +159,15 @@ namespace SaasKit.Multitenancy.Tests
         {
             TenantContext<TestTenant> cachedTenant;
             var harness = new TestHarness(cacheExpirationInSeconds: 2, evictAllOnExpiry: false);
-            var context = CreateContext("/apple");
 
             // first request for apple
-            await harness.Resolver.ResolveAsync(CreateContext("/apple"));
+            await harness.Resolver.ResolveAsync(CreateHttpContext("/apple"));
 
             // wait 1 second
             Thread.Sleep(1000);
 
             // second request for pear
-            await harness.Resolver.ResolveAsync(CreateContext("/pear"));
+            await harness.Resolver.ResolveAsync(CreateHttpContext("/pear"));
 
             // wait 1 second
             Thread.Sleep(1000);
@@ -150,7 +183,7 @@ namespace SaasKit.Multitenancy.Tests
         public async Task Can_dispose_on_eviction()
         {
             var harness = new TestHarness(cacheExpirationInSeconds: 1, disposeOnEviction: true);
-            var context = CreateContext("/apple");
+            var context = CreateHttpContext("/apple");
 
             var tenantContext = await harness.Resolver.ResolveAsync(context);
 
@@ -167,7 +200,7 @@ namespace SaasKit.Multitenancy.Tests
         public async Task Can_not_dispose_on_eviction()
         {
             var harness = new TestHarness(cacheExpirationInSeconds: 1, disposeOnEviction: false);
-            var context = CreateContext("/apple");
+            var context = CreateHttpContext("/apple");
 
             var tenantContext = await harness.Resolver.ResolveAsync(context);
 
@@ -179,7 +212,6 @@ namespace SaasKit.Multitenancy.Tests
             // access it again and even though it's disposed, it should not be evicted
             Assert.False(tenantContext.Tenant.Disposed);
         }
-
 
         class TestTenant : IDisposable
         {
@@ -216,10 +248,10 @@ namespace SaasKit.Multitenancy.Tests
         class TestTenantMemoryCacheResolver : MemoryCacheTenantResolver<TestTenant>
         {
             readonly List<TestTenant> tenants = new List<TestTenant>()
-                                           {
-                                               new TestTenant() { Id = "fruit", Paths = new List<string>() { "/apple","/pear","/grape" }},
-                                               new TestTenant() { Id = "vegetable", Paths = new List<string>() { "/lettuce","/carrot","/onion" }}
-                                           };
+            {
+                new TestTenant { Id = "fruit", Paths = new List<string>() { "/apple","/pear","/grape" }},
+                new TestTenant { Id = "vegetable", Paths = new List<string>() { "/lettuce","/carrot","/onion" }}
+            };
 
             private readonly int cacheExpirationInSeconds;
 
@@ -240,19 +272,39 @@ namespace SaasKit.Multitenancy.Tests
                 return context.Request.Path;
             }
 
+            protected override string GetContextIdentifier(IncomingStepContext context)
+            {
+                var msg = context.Load<TransportMessage>();
+                return msg.Headers.GetValueOrDefault("path");
+            }
+
             protected override IEnumerable<string> GetTenantIdentifiers(TenantContext<TestTenant> context)
             {
                 return context?.Tenant?.Paths;
             }
 
+            protected override void HandleTenantContext(TenantContext<TestTenant> context)
+            {
+                return;
+            }
+
             protected override Task<TenantContext<TestTenant>> ResolveAsync(HttpContext context)
             {
-                var tenant = tenants.FirstOrDefault(testTenant => testTenant.Paths.Contains(context.Request.Path));
+                var path = context.Request.Path;
+                return CreateTenantContext(path);
+            }
 
+            protected override Task<TenantContext<TestTenant>> ResolveAsync(IncomingStepContext context)
+            {
+                var path = GetContextIdentifier(context);
+                return CreateTenantContext(path);
+            }
+
+            private Task<TenantContext<TestTenant>> CreateTenantContext(PathString path)
+            {
+                var tenant = tenants.FirstOrDefault(testTenant => testTenant.Paths.Contains(path));
                 var tenantContext = new TenantContext<TestTenant>(tenant);
-
                 tenantContext.Properties.Add("Created", DateTime.UtcNow);
-
                 return Task.FromResult(tenantContext);
             }
         }

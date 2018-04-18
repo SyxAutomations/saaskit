@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Description>Multi-tenancy support for ASP.NET Core.</Description>
     <Copyright>Copyright © Ben Foster</Copyright>
-    <VersionPrefix>2.0.0</VersionPrefix>
+    <VersionPrefix>2.1.0</VersionPrefix>
     <TargetFramework>netstandard2.0</TargetFramework>
     <AssemblyName>SaasKit.Core.Multitenancy</AssemblyName>
     <PackageId>SaasKit.Core.Multitenancy</PackageId>
